@@ -1630,123 +1630,368 @@ Free-running RNN for generation/inference.
 
 ### handwriting_synthesis/tf/utils.py
 
+**File Location**: `/handwriting_synthesis/tf/utils.py`
+
+Custom TensorFlow layers and utility functions for neural network construction.
+
+---
+
 #### Functions:
 
 ##### `dense_layer(inputs, output_units, bias=True, activation=None, batch_norm=None, dropout=None, scope='dense-layer', reuse=False)`
-Creates a fully connected neural network layer.
-- **Parameters:**
-  - `inputs`: Input tensor [batch_size, input_units]
-  - `output_units`: Number of output neurons
-  - `bias`: Whether to add bias term
-  - `activation`: Activation function
-  - `batch_norm`: Whether to apply batch normalization
-  - `dropout`: Dropout keep probability
-  - `scope`: Variable scope name
-  - `reuse`: Whether to reuse variables
-- **Returns:** Output tensor [batch_size, output_units]
-- **Purpose:** Standard dense layer with optional regularization
+
+Creates a fully connected neural network layer with optional regularization.
+
+**Parameters:**
+- `inputs` (tf.Tensor): Input tensor of shape [batch_size, input_units]
+- `output_units` (int): Number of output neurons
+- `bias` (bool, optional): Whether to add bias term. Default: `True`
+- `activation` (callable, optional): Activation function (e.g., `tf.nn.relu`, `tf.nn.tanh`). Default: `None` (linear)
+- `batch_norm` (bool, optional): Whether to apply batch normalization. Default: `None` (no batch norm)
+- `dropout` (float, optional): Dropout keep probability (0.0-1.0). Default: `None` (no dropout)
+- `scope` (str, optional): Variable scope name. Default: `'dense-layer'`
+- `reuse` (bool, optional): Whether to reuse variables. Default: `False`
+
+**Returns**: `tf.Tensor` - Output tensor of shape [batch_size, output_units]
+
+**Purpose**: Standard fully connected layer with optional regularization (batch normalization, dropout).
+
+**Layer Order**:
+1. Linear transformation: W * x + b
+2. Batch normalization (if enabled)
+3. Activation function (if provided)
+4. Dropout (if enabled)
+
+**Example**:
+```python
+from handwriting_synthesis.tf.utils import dense_layer
+import tensorflow as tf
+
+x = tf.placeholder(tf.float32, [None, 128])
+hidden = dense_layer(x, 256, activation=tf.nn.relu, dropout=0.5)
+output = dense_layer(hidden, 10)
+```
+
+---
 
 ##### `time_distributed_dense_layer(inputs, output_units, bias=True, activation=None, batch_norm=None, dropout=None, scope='time-distributed-dense-layer', reuse=False)`
-Applies dense layer independently to each timestep.
-- **Parameters:**
-  - `inputs`: Input tensor [batch_size, max_seq_len, input_units]
-  - `output_units`: Number of output units
-  - `bias`: Whether to add bias
-  - `activation`: Activation function
-  - `batch_norm`: Batch normalization flag
-  - `dropout`: Dropout rate
-  - `scope`: Variable scope
-  - `reuse`: Variable reuse flag
-- **Returns:** Output tensor [batch_size, max_seq_len, output_units]
-- **Purpose:** Applies same dense layer across all timesteps (weight sharing)
+
+Applies dense layer independently to each timestep in a sequence.
+
+**Parameters:**
+- `inputs` (tf.Tensor): Input tensor of shape [batch_size, max_seq_len, input_units]
+- `output_units` (int): Number of output units per timestep
+- `bias` (bool, optional): Whether to add bias. Default: `True`
+- `activation` (callable, optional): Activation function. Default: `None`
+- `batch_norm` (bool, optional): Batch normalization flag. Default: `None`
+- `dropout` (float, optional): Dropout rate. Default: `None`
+- `scope` (str, optional): Variable scope. Default: `'time-distributed-dense-layer'`
+- `reuse` (bool, optional): Variable reuse flag. Default: `False`
+
+**Returns**: `tf.Tensor` - Output tensor of shape [batch_size, max_seq_len, output_units]
+
+**Purpose**: Applies same dense layer across all timesteps with weight sharing (for sequence models).
+
+**Weight Sharing**: All timesteps use identical parameters (efficient for RNNs).
+
+**Example**:
+```python
+from handwriting_synthesis.tf.utils import time_distributed_dense_layer
+import tensorflow as tf
+
+# Sequence input: (batch=32, time=100, features=64)
+x_seq = tf.placeholder(tf.float32, [32, 100, 64])
+
+# Apply dense layer to each timestep
+output_seq = time_distributed_dense_layer(x_seq, 128, activation=tf.nn.tanh)
+# Shape: (32, 100, 128)
+```
+
+---
 
 ##### `shape(tensor, dim=None)`
+
 Gets tensor shape as list or specific dimension.
-- **Parameters:**
-  - `tensor`: TensorFlow tensor
-  - `dim`: Optional dimension index
-- **Returns:** Shape list or single dimension
-- **Purpose:** Convenient shape extraction utility
+
+**Parameters:**
+- `tensor` (tf.Tensor): TensorFlow tensor
+- `dim` (int, optional): Optional dimension index. Default: `None` (returns all dimensions)
+
+**Returns**: 
+- If `dim` is `None`: List of dimension sizes
+- If `dim` is int: Single dimension size
+
+**Purpose**: Convenient shape extraction utility that handles both static and dynamic shapes.
+
+**Example**:
+```python
+from handwriting_synthesis.tf.utils import shape
+import tensorflow as tf
+
+x = tf.placeholder(tf.float32, [None, 128, 256])
+all_dims = shape(x)  # [None, 128, 256]
+second_dim = shape(x, dim=1)  # 128
+```
+
+---
 
 ##### `rank(tensor)`
+
 Gets tensor rank (number of dimensions).
-- **Parameters:**
-  - `tensor`: TensorFlow tensor
-- **Returns:** Integer rank
-- **Purpose:** Returns dimensionality of tensor
+
+**Parameters:**
+- `tensor` (tf.Tensor): TensorFlow tensor
+
+**Returns**: `int` - Number of dimensions
+
+**Purpose**: Returns dimensionality of tensor.
+
+**Example**:
+```python
+from handwriting_synthesis.tf.utils import rank
+import tensorflow as tf
+
+x = tf.placeholder(tf.float32, [None, 128, 256])
+num_dims = rank(x)  # 3
+```
+
+---
 
 ### handwriting_synthesis/tf/BaseModel.py
 
+**File Location**: `/handwriting_synthesis/tf/BaseModel.py`
+
 #### Class: `BaseModel`
 
-Base class for TensorFlow models with training loop, checkpointing, and inference.
+Base class for TensorFlow models with integrated training loop, checkpointing, validation, and inference.
+
+**Purpose**: Provides reusable training infrastructure for all models, including:
+- Training loop with early stopping
+- Automatic checkpointing and model saving
+- Validation monitoring and learning rate scheduling
+- Parameter averaging for better generalization
+- Logging and progress tracking
+
+**Design**: Abstract base class - subclasses must implement `calculate_loss()` method.
+
+---
+
+#### Methods:
 
 ##### `__init__(self, reader=None, batch_sizes=None, num_training_steps=20000, learning_rates=None, beta1_decays=None, optimizer='adam', grad_clip=5, regularization_constant=0.0, keep_prob=1.0, patiences=None, warm_start_init_step=0, enable_parameter_averaging=False, min_steps_to_checkpoint=100, log_interval=20, logging_level=logging.INFO, loss_averaging_window=100, validation_batch_size=64, log_dir='logs', checkpoint_dir=checkpoint_path, prediction_dir=prediction_path)`
-Initializes base model with training configuration.
-- **Parameters:** (extensive, see docstring)
-  - Training parameters: batch sizes, learning rates, optimization settings
-  - Regularization: grad clipping, dropout, L2
-  - Early stopping: patience, restarts
-  - Logging: intervals, directories
-- **Purpose:** Sets up training infrastructure
+
+Initializes base model with comprehensive training configuration.
+
+**Parameters** (extensive configuration):
+
+**Data Parameters:**
+- `reader` (DataReader, optional): Data reader for training. Default: `None`
+- `batch_sizes` (list of int, optional): Batch sizes per restart. Default: `None`
+
+**Training Parameters:**
+- `num_training_steps` (int, optional): Total training steps. Default: `20000`
+- `learning_rates` (list of float, optional): Learning rates per restart. Default: `None`
+- `beta1_decays` (list of float, optional): Adam beta1 values per restart. Default: `None`
+- `optimizer` (str, optional): Optimizer type ('adam', 'sgd', 'rmsprop'). Default: `'adam'`
+
+**Regularization Parameters:**
+- `grad_clip` (float, optional): Gradient clipping threshold. Default: `5`
+- `regularization_constant` (float, optional): L2 regularization weight. Default: `0.0`
+- `keep_prob` (float, optional): Dropout keep probability. Default: `1.0` (no dropout)
+
+**Early Stopping Parameters:**
+- `patiences` (list of int, optional): Patience values (steps without improvement) per restart. Default: `None`
+- `warm_start_init_step` (int, optional): Initial training step for warm start. Default: `0`
+
+**Model Saving Parameters:**
+- `enable_parameter_averaging` (bool, optional): Enable exponential moving average of parameters. Default: `False`
+- `min_steps_to_checkpoint` (int, optional): Minimum steps between checkpoints. Default: `100`
+
+**Logging Parameters:**
+- `log_interval` (int, optional): Steps between log messages. Default: `20`
+- `logging_level` (int, optional): Python logging level. Default: `logging.INFO`
+- `loss_averaging_window` (int, optional): Window size for loss averaging. Default: `100`
+
+**Directory Parameters:**
+- `validation_batch_size` (int, optional): Batch size for validation. Default: `64`
+- `log_dir` (str, optional): Directory for logs. Default: `'logs'`
+- `checkpoint_dir` (str, optional): Directory for checkpoints. Default: `checkpoint_path`
+- `prediction_dir` (str, optional): Directory for predictions. Default: `prediction_path`
+
+**Returns**: None
+
+**Purpose**: Sets up comprehensive training infrastructure with early stopping, validation monitoring, and checkpointing.
+
+---
 
 ##### `update_train_params(self)`
-Updates training parameters for current restart.
-- **Purpose:** Adjusts hyperparameters between training phases
+
+Updates training parameters for current restart phase.
+
+**Parameters**: None
+
+**Returns**: None
+
+**Purpose**: Adjusts hyperparameters (learning rate, batch size, patience) between training restarts.
+
+**Multi-Phase Training**: Supports curriculum learning with different parameters per phase.
+
+---
 
 ##### `calculate_loss(self)`
+
 Abstract method for loss calculation (must be implemented by subclasses).
-- **Returns:** Loss tensor
-- **Purpose:** Defines model-specific loss computation
+
+**Parameters**: None
+
+**Returns**: `tf.Tensor` - Loss tensor for optimization
+
+**Purpose**: Defines model-specific loss computation.
+
+**Note**: This is an abstract method that subclasses MUST implement.
+
+---
 
 ##### `fit(self)`
+
 Main training loop with validation and early stopping.
-- **Purpose:** Trains model with automatic checkpointing, validation monitoring, and learning rate scheduling
+
+**Parameters**: None
+
+**Returns**: None
+
+**Purpose**: Trains model with:
+- Automatic checkpointing based on validation performance
+- Early stopping when validation loss stops improving
+- Learning rate scheduling
+- Periodic validation evaluation
+- Progress logging
+
+**Training Flow**:
+1. Build computational graph
+2. Initialize or restore from checkpoint
+3. For each training step:
+   - Get batch from training data
+   - Compute loss and gradients
+   - Update parameters
+   - Periodically evaluate validation loss
+   - Save checkpoint if validation improves
+   - Early stop if patience exceeded
+4. Final checkpoint save
+
+---
 
 ##### `predict(self, chunk_size=256)`
-Runs inference on test set and saves predictions.
-- **Parameters:**
-  - `chunk_size`: Batch size for inference
-- **Purpose:** Generates and saves predictions to numpy files
+
+Runs inference on test set and saves predictions to disk.
+
+**Parameters:**
+- `chunk_size` (int, optional): Batch size for inference. Default: `256`
+
+**Returns**: None
+
+**Purpose**: Generates and saves predictions to numpy files for evaluation.
+
+**Output**: Saves predictions as `.npy` files in `prediction_dir`.
+
+---
 
 ##### `save(self, step, averaged=False)`
-Saves model checkpoint.
-- **Parameters:**
-  - `step`: Training step number
-  - `averaged`: Whether to save averaged parameters
-- **Purpose:** Persists model weights to disk
+
+Saves model checkpoint to disk.
+
+**Parameters:**
+- `step` (int): Training step number (for checkpoint naming)
+- `averaged` (bool, optional): Whether to save averaged parameters. Default: `False`
+
+**Returns**: None
+
+**Purpose**: Persists model weights to disk for later restoration.
+
+**Checkpoint Naming**: `checkpoint-{step}.ckpt` or `checkpoint-{step}-averaged.ckpt`
+
+---
 
 ##### `restore(self, step=None, averaged=False)`
+
 Restores model from checkpoint.
-- **Parameters:**
-  - `step`: Step to restore (None = latest)
-  - `averaged`: Whether to restore averaged parameters
-- **Purpose:** Loads model weights from disk
+
+**Parameters:**
+- `step` (int, optional): Step to restore. If `None`, restores latest checkpoint. Default: `None`
+- `averaged` (bool, optional): Whether to restore averaged parameters. Default: `False`
+
+**Returns**: None
+
+**Purpose**: Loads model weights from disk.
+
+**Auto-detection**: If step is `None`, automatically finds and loads the latest checkpoint.
+
+---
 
 ##### `init_logging(self, log_dir)`
+
 Sets up logging to file and console.
-- **Parameters:**
-  - `log_dir`: Directory for log files
-- **Purpose:** Configures Python logging
+
+**Parameters:**
+- `log_dir` (str): Directory for log files
+
+**Returns**: None
+
+**Purpose**: Configures Python logging with both file and console handlers.
+
+**Log File**: `{log_dir}/training.log`
+
+---
 
 ##### `update_parameters(self, loss)`
+
 Computes gradients and applies parameter updates.
-- **Parameters:**
-  - `loss`: Loss tensor
-- **Purpose:** Defines optimization step with gradient clipping and regularization
+
+**Parameters:**
+- `loss` (tf.Tensor): Loss tensor to optimize
+
+**Returns**: None (creates TensorFlow operations)
+
+**Purpose**: Defines optimization step with:
+- Gradient computation
+- Gradient clipping (prevents exploding gradients)
+- L2 regularization
+- Parameter updates via optimizer
+
+---
 
 ##### `get_optimizer(self, learning_rate, beta1_decay)`
-Creates TensorFlow optimizer.
-- **Parameters:**
-  - `learning_rate`: Learning rate
-  - `beta1_decay`: Beta1 parameter for Adam/momentum
-- **Returns:** TensorFlow optimizer
-- **Purpose:** Instantiates Adam, SGD, or RMSProp optimizer
+
+Creates TensorFlow optimizer instance.
+
+**Parameters:**
+- `learning_rate` (float): Learning rate
+- `beta1_decay` (float): Beta1 parameter for Adam or momentum for SGD
+
+**Returns**: TensorFlow optimizer (Adam, SGD, or RMSProp)
+
+**Purpose**: Instantiates optimizer based on `self.optimizer` setting.
+
+**Supported Optimizers**:
+- `'adam'`: Adam optimizer
+- `'sgd'`: Stochastic gradient descent with momentum
+- `'rmsprop'`: RMSProp optimizer
+
+---
 
 ##### `build_graph(self)`
-Constructs TensorFlow computational graph.
-- **Returns:** TensorFlow graph
-- **Purpose:** Builds complete graph with loss, optimizer, and savers
+
+Constructs complete TensorFlow computational graph.
+
+**Parameters**: None
+
+**Returns**: `tf.Graph` - TensorFlow graph object
+
+**Purpose**: Builds complete graph including:
+- Loss computation (via `calculate_loss()`)
+- Optimizer and training operations
+- Model savers for checkpointing
+- All necessary placeholders and operations
 
 ---
 
@@ -1754,92 +1999,498 @@ Constructs TensorFlow computational graph.
 
 ### handwriting_synthesis/training/batch_generator.py
 
+**File Location**: `/handwriting_synthesis/training/batch_generator.py`
+
 ##### `batch_generator(batch_size, df, shuffle=True, num_epochs=10000, mode='train')`
-Generator that yields training batches.
-- **Parameters:**
-  - `batch_size`: Samples per batch
-  - `df`: DataFrame containing data
-  - `shuffle`: Whether to shuffle
-  - `num_epochs`: Maximum epochs
-  - `mode`: 'train', 'val', or 'test'
-- **Yields:** Dictionary batches with keys: x, y, x_len, c, c_len
-- **Purpose:** Prepares batches by trimming sequences and adjusting for teacher forcing
+
+Generator function that yields training batches with proper formatting.
+
+**Parameters:**
+- `batch_size` (int): Number of samples per batch
+- `df` (DataFrame): DataFrame containing training data
+- `shuffle` (bool, optional): Whether to shuffle data each epoch. Default: `True`
+- `num_epochs` (int, optional): Maximum number of epochs to generate. Default: `10000`
+- `mode` (str, optional): Mode of operation ('train', 'val', or 'test'). Default: `'train'`
+
+**Yields**: Dictionary with keys:
+- `'x'`: Input stroke sequences (batch_size, max_stroke_len, 3)
+- `'y'`: Target stroke sequences (batch_size, max_stroke_len, 3)
+- `'x_len'`: Length of each stroke sequence (batch_size,)
+- `'c'`: Character sequences (batch_size, max_char_len)
+- `'c_len'`: Length of each character sequence (batch_size,)
+
+**Purpose**: Prepares batches by:
+- Trimming sequences to batch-specific maximum lengths
+- Adjusting targets for teacher forcing (offset by 1 timestep)
+- Padding sequences to uniform length
+- Shuffling data between epochs (if enabled)
+
+**Teacher Forcing**: Target y[t] corresponds to input x[t+1] for training.
+
+---
 
 ### handwriting_synthesis/training/DataReader.py
 
+**File Location**: `/handwriting_synthesis/training/DataReader.py`
+
 #### Class: `DataReader`
 
-Handles data loading and batch generation for training.
+Handles data loading and batch generation for model training.
+
+**Purpose**: Loads preprocessed IAM dataset, splits into train/validation/test sets, and provides batch generators.
+
+---
+
+#### Methods:
 
 ##### `__init__(self, data_dir)`
-Loads and splits data into train/validation/test sets.
-- **Parameters:**
-  - `data_dir`: Directory containing processed numpy arrays
-- **Purpose:** Creates data readers with 95/5 train/val split
+
+Loads preprocessed data and creates train/validation/test splits.
+
+**Parameters:**
+- `data_dir` (str): Directory containing processed numpy arrays
+  - Expected files: `strokes.npy`, `offsets.npy`, `sentences.npy`
+
+**Returns**: None
+
+**Purpose**: Creates data readers with 95/5 train/validation split.
+
+**Data Split**:
+- Training: 95% of data
+- Validation: 5% of data
+- Test: Separate test set (if available)
+
+**Side Effects**:
+- Loads all data into memory
+- Creates internal DataFrame objects
+
+---
 
 ##### `train_batch_generator(self, batch_size)`
+
 Creates training batch generator.
-- **Parameters:**
-  - `batch_size`: Batch size
-- **Returns:** Batch generator
-- **Purpose:** Provides shuffled training batches
+
+**Parameters:**
+- `batch_size` (int): Number of samples per batch
+
+**Returns**: Generator yielding training batches
+
+**Purpose**: Provides shuffled training batches for model training.
+
+**Behavior**: Shuffles data each epoch, runs indefinitely.
+
+---
 
 ##### `val_batch_generator(self, batch_size)`
+
 Creates validation batch generator.
-- **Parameters:**
-  - `batch_size`: Batch size
-- **Returns:** Batch generator
-- **Purpose:** Provides shuffled validation batches
+
+**Parameters:**
+- `batch_size` (int): Number of samples per batch
+
+**Returns**: Generator yielding validation batches
+
+**Purpose**: Provides shuffled validation batches for monitoring generalization.
+
+**Behavior**: Shuffles data each epoch, runs indefinitely.
+
+---
 
 ##### `test_batch_generator(self, batch_size)`
+
 Creates test batch generator.
-- **Parameters:**
-  - `batch_size`: Batch size
-- **Returns:** Batch generator
-- **Purpose:** Provides unshuffled test batches (single epoch)
+
+**Parameters:**
+- `batch_size` (int): Number of samples per batch
+
+**Returns**: Generator yielding test batches
+
+**Purpose**: Provides unshuffled test batches for final evaluation.
+
+**Behavior**: No shuffling, single epoch only.
+
+---
 
 ### handwriting_synthesis/training/train.py
 
+**File Location**: `/handwriting_synthesis/training/train.py`
+
 ##### `train()`
-Main training entry point.
-- **Purpose:** Configures and launches RNN training with specified hyperparameters
+
+Main entry point for model training.
+
+**Parameters**: None
+
+**Returns**: None
+
+**Purpose**: Configures and launches RNN training with specified hyperparameters.
+
+**Training Configuration** (default):
+- LSTM size: 400 hidden units
+- Output mixture components: 20
+- Attention mixture components: 10
+- Learning rates: Multi-phase with decay
+- Batch sizes: Progressive scheduling
+- Early stopping: Enabled with patience
+
+**Usage**:
+```python
+from handwriting_synthesis.training.train import train
+
+train()  # Starts training from scratch or resumes from checkpoint
+```
+
+**Requirements**:
+- Preprocessed data in `model/data/processed/`
+- Sufficient disk space for checkpoints
+- GPU recommended for faster training
+
+---
 
 ### handwriting_synthesis/training/preparation/prepare.py
 
+**File Location**: `/handwriting_synthesis/training/preparation/prepare.py`
+
 ##### `prepare()`
-Preprocesses raw IAM dataset into numpy arrays.
-- **Purpose:** Traverses data directory, extracts strokes and transcriptions, applies preprocessing, saves to processed directory
+
+Preprocesses raw IAM On-Line Handwriting Database into numpy arrays.
+
+**Parameters**: None
+
+**Returns**: None
+
+**Purpose**: Complete data preprocessing pipeline:
+1. Traverses IAM dataset directory structure
+2. Extracts stroke data from XML files
+3. Extracts text transcriptions
+4. Applies preprocessing (alignment, denoising, normalization)
+5. Matches strokes with corresponding text
+6. Saves processed data to numpy files
+
+**Input Requirements**:
+- IAM On-Line Handwriting Database in `model/data/raw/`
+- Directory structure: `{writer_id}/{file_id}.xml` for strokes
+- Text transcriptions in `model/data/raw/ascii/`
+
+**Output**:
+- `model/data/processed/strokes.npy`: Stroke coordinates
+- `model/data/processed/offsets.npy`: Stroke offsets
+- `model/data/processed/sentences.npy`: Encoded text sequences
+
+**Usage**:
+```python
+from handwriting_synthesis.training.preparation.prepare import prepare
+
+prepare()  # Process raw IAM dataset
+```
+
+---
 
 ### handwriting_synthesis/training/preparation/operations.py
 
+**File Location**: `/handwriting_synthesis/training/preparation/operations.py`
+
+Contains helper functions for data preprocessing.
+
+---
+
+#### Functions:
+
 ##### `get_stroke_sequence(filename)`
+
 Extracts and preprocesses stroke data from XML file.
-- **Parameters:**
-  - `filename`: Path to XML stroke file
-- **Returns:** Normalized stroke offsets
-- **Purpose:** Parses XML, aligns, denoises, and normalizes strokes
+
+**Parameters:**
+- `filename` (str): Path to XML stroke file from IAM dataset
+
+**Returns**: `numpy.ndarray` - Normalized stroke offsets of shape (N, 3)
+  - Columns: [dx, dy, pen_up]
+
+**Purpose**: Complete stroke preprocessing pipeline:
+1. Parse XML file
+2. Extract stroke coordinates
+3. Apply alignment to remove slant
+4. Apply denoising (Savitzky-Golay filter)
+5. Convert to offset representation
+6. Normalize magnitudes
+
+**XML Format**: IAM-specific XML format with stroke points.
+
+---
 
 ##### `get_ascii_sequences(filename)`
+
 Extracts text transcriptions from file.
-- **Parameters:**
-  - `filename`: Path to text file
-- **Returns:** List of encoded text sequences
-- **Purpose:** Parses and encodes text labels
+
+**Parameters:**
+- `filename` (str): Path to text transcription file
+
+**Returns**: `list of numpy.ndarray` - List of encoded text sequences
+
+**Purpose**: 
+1. Parse text file
+2. Extract lines of text
+3. Encode characters to indices
+4. Return encoded sequences
+
+**Text Format**: Plain text file, one line per stroke sequence.
+
+---
 
 ##### `collect_data()`
+
 Traverses IAM dataset and collects file paths and metadata.
-- **Returns:** Tuple of (stroke_fnames, transcriptions, writer_ids)
-- **Purpose:** Organizes dataset files, filters blacklist, matches strokes to text
+
+**Parameters**: None
+
+**Returns**: Tuple of:
+- `stroke_fnames` (list): Paths to stroke XML files
+- `transcriptions` (list): Corresponding text transcriptions
+- `writer_ids` (list): Writer identifiers for each sample
+
+**Purpose**: 
+1. Traverse IAM directory structure
+2. Find all stroke and transcription files
+3. Filter blacklisted samples (corrupted data)
+4. Match strokes to corresponding text
+5. Collect metadata for analysis
+
+**Blacklist**: Filters out known corrupted or problematic samples.
+
+---
+
+## Troubleshooting
+
+### Common Issues and Solutions
+
+#### Installation Issues
+
+**Problem**: TensorFlow installation fails on Apple Silicon
+
+**Solution**:
+```bash
+# Use TensorFlow macOS optimized build
+pip install tensorflow-macos==2.15.0
+pip install tensorflow-metal  # For GPU acceleration
+```
+
+---
+
+**Problem**: `svgwrite` module not found
+
+**Solution**:
+```bash
+pip install svgwrite>=1.1.12
+```
+
+---
+
+#### Runtime Issues
+
+**Problem**: `FileNotFoundError: model/checkpoint not found`
+
+**Solution**:
+Ensure the pre-trained model is in the correct location:
+```bash
+ls model/checkpoint/
+# Should contain: checkpoint, model files (.data, .index, .meta)
+```
+
+If missing, clone the repository again or download the model files separately.
+
+---
+
+**Problem**: `ValueError: Line exceeds 75 characters`
+
+**Solution**:
+Split long text into multiple lines:
+```python
+lines = [
+    "This is a line within the limit",
+    "Each line must be 75 chars or less"
+]
+```
+
+---
+
+**Problem**: `ValueError: Unsupported character in text`
+
+**Solution**:
+The supported alphabet is:
+```
+Space ! " # ' ( ) , - . 0-9 : ; ?
+A-Z (except Q, X, Z)
+a-z
+```
+
+Remove or replace unsupported characters:
+```python
+text = text.replace('&', 'and')
+text = text.replace('@', 'at')
+```
+
+---
+
+**Problem**: Output SVG is empty or corrupted
+
+**Solution**:
+1. Check that all lines are non-empty strings
+2. Verify bias values are reasonable (0.1-1.5)
+3. Ensure style indices are valid (0-12)
+4. Try with default parameters first:
+```python
+hand.write('test.svg', ['Test'])
+```
+
+---
+
+#### Performance Issues
+
+**Problem**: Generation is very slow
+
+**Solution**:
+1. First run is slower (model loading) - subsequent calls are faster
+2. Ensure TensorFlow is using GPU (if available):
+```python
+import tensorflow as tf
+print(tf.config.list_physical_devices('GPU'))
+```
+
+---
+
+**Problem**: High memory usage
+
+**Solution**:
+1. Process fewer lines at once
+2. Close and restart Hand() object periodically:
+```python
+hand = Hand()
+hand.write('output1.svg', lines1)
+del hand  # Free memory
+
+hand = Hand()
+hand.write('output2.svg', lines2)
+```
+
+---
+
+#### Output Quality Issues
+
+**Problem**: Handwriting looks too random/messy
+
+**Solution**:
+Decrease bias value (controls randomness):
+```python
+biases = [0.3, 0.3]  # Lower = more consistent
+```
+
+---
+
+**Problem**: Handwriting looks too uniform/robotic
+
+**Solution**:
+Increase bias value:
+```python
+biases = [1.0, 1.0]  # Higher = more variation
+```
+
+---
+
+**Problem**: Want different handwriting style
+
+**Solution**:
+Try different style indices (0-12):
+```python
+styles = [7, 7]  # Experiment with different styles
+```
+
+---
+
+#### Training Issues
+
+**Problem**: Training fails with "Out of memory"
+
+**Solution**:
+1. Reduce batch size in training configuration
+2. Use gradient checkpointing
+3. Train on GPU with more memory
+4. Reduce model size (lstm_size parameter)
+
+---
+
+**Problem**: Cannot find IAM dataset
+
+**Solution**:
+1. Download IAM On-Line Handwriting Database
+2. Place in `model/data/raw/`
+3. Run preparation:
+```python
+from handwriting_synthesis.training.preparation.prepare import prepare
+prepare()
+```
+
+---
+
+### Getting Help
+
+If you encounter issues not covered here:
+
+1. **Check the issue tracker**: Search existing issues on GitHub
+2. **Review the code**: The codebase is well-documented
+3. **Check dependencies**: Ensure all requirements are installed with correct versions
+4. **Verify data**: Ensure model files and data are not corrupted
+
+**System Requirements Checklist**:
+- ✓ Python 3.8-3.10
+- ✓ macOS 11+ (or compatible OS)
+- ✓ All dependencies from `requirements.txt`
+- ✓ Pre-trained model in `model/checkpoint/`
+- ✓ Sufficient disk space (500MB+)
+- ✓ Sufficient RAM (4GB+ recommended)
 
 ---
 
 ## Summary
 
 This codebase implements a sequence-to-sequence handwriting synthesis model using:
+
+**Core Technologies**:
 - **LSTM with Attention**: Generates handwriting strokes from text
-- **Mixture Density Networks**: Models probabilistic stroke distributions
+- **Mixture Density Networks**: Models probabilistic stroke distributions  
 - **Style Priming**: Allows conditioning on specific handwriting styles
 - **Data Processing Pipeline**: Handles IAM dataset preprocessing
 - **SVG Rendering**: Creates scalable vector graphics output
 
-The main user interface is the `Hand` class, which provides a simple `write()` method for generating handwritten text in various styles and with adjustable randomness.
+**Key Components**:
+1. **Hand Module**: High-level API for users
+2. **RNN Module**: Neural network architecture
+3. **Drawing Module**: Stroke processing and rendering
+4. **Training Module**: Model training infrastructure
+5. **TensorFlow Utilities**: Neural network layers and helpers
+6. **Data Frame Module**: Efficient data handling
+
+**Primary Interface**:
+The `Hand` class provides a simple `write()` method for generating handwritten text in various styles with adjustable randomness.
+
+**Typical Workflow**:
+```python
+from handwriting_synthesis import Hand
+
+# Initialize model
+hand = Hand()
+
+# Generate handwriting
+hand.write(
+    filename='output.svg',
+    lines=['Your text here'],
+    biases=[0.75],
+    styles=[9]
+)
+```
+
+**Research Foundation**:
+Based on Alex Graves' paper "Generating Sequences with Recurrent Neural Networks" ([arXiv:1308.0850](https://arxiv.org/abs/1308.0850))
+
+---
+
+**End of Documentation**
