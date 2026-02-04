@@ -101,10 +101,12 @@ Processing (align, denoise) → SVG Rendering → Output File
 
 ### System Requirements
 
-* **Operating System**: macOS 11+ (Big Sur or later)
+* **Operating System**: macOS 11+ (Big Sur or later) recommended
+  - Also compatible with Linux and Windows with appropriate TensorFlow installation
+  - This fork is optimized and tested for macOS (Intel & Apple Silicon)
 * **Python**: 3.8, 3.9, or 3.10
 * **Hardware**: 
-  - Intel or Apple Silicon processor
+  - Intel or Apple Silicon processor (or equivalent)
   - Minimum 4GB RAM (8GB recommended for training)
   - 500MB disk space for model and dependencies
 
@@ -298,8 +300,11 @@ hand.write(
 **Supported Characters**:
 ```
 Space, !, ", #, ', (, ), ,, -, ., 0-9, :, ;, ?,
-A-Z (except Q, X, Z), a-z
+A-Y (uppercase - missing Q, X, Z due to training data limitations),
+a-z (all lowercase letters)
 ```
+
+**Note**: The uppercase letters Q, X, and Z are not available because they were not included in the IAM On-Line Handwriting Database used for training. Use lowercase alternatives (q, x, z) instead.
 
 ### Drawing Strokes Directly
 
@@ -705,7 +710,9 @@ Complete set of supported characters for handwriting synthesis:
  'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x',
  'y', 'z']
 ```
-**Purpose**: Defines valid input characters (Note: Missing Q, X, Z in uppercase)
+**Purpose**: Defines valid input characters
+
+**Note on Missing Characters**: The uppercase letters Q, X, and Z are not included in the training data (IAM On-Line Handwriting Database). This is a limitation of the dataset, not the model. Users should avoid these characters or substitute them with lowercase equivalents.
 
 **`alphabet_ord`** (list of int)  
 ASCII codes for all characters in `alphabet`.
@@ -1020,8 +1027,13 @@ from handwriting_synthesis.drawing.operations import draw
 draw(strokes, ascii_seq="Hello World", interpolation_factor=2)
 
 # Save to file
-draw(strokes, ascii_seq="Hello World", save_file="output.png", 
-     align_strokes=True, denoise_strokes=True)
+draw(
+    strokes, 
+    ascii_seq="Hello World", 
+    save_file="output.png", 
+    align_strokes=True, 
+    denoise_strokes=True
+)
 ```
 
 ---
