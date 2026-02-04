@@ -1030,46 +1030,180 @@ draw(strokes, ascii_seq="Hello World", save_file="output.png",
 
 ### handwriting_synthesis/hand/Hand.py
 
+**File Location**: `/handwriting_synthesis/hand/Hand.py`
+
 #### Class: `Hand`
 
-Main interface for generating handwritten text.
+The primary user-facing interface for generating handwritten text. This class encapsulates the RNN model and provides a simple API for text-to-handwriting conversion.
+
+**Purpose**: High-level API that abstracts away model complexity, allowing users to generate handwritten SVG output with a single method call.
+
+---
+
+#### Methods:
 
 ##### `__init__(self)`
-Initializes the handwriting synthesis model.
-- **Purpose:** Loads pre-trained RNN model, configures TensorFlow, restores checkpoint
+
+Initializes the handwriting synthesis model and loads pre-trained weights.
+
+**Parameters**: None
+
+**Returns**: None
+
+**Purpose**: 
+- Configures TensorFlow environment (suppresses warnings)
+- Loads RNN model architecture
+- Restores pre-trained checkpoint from `model/checkpoint/`
+- Initializes TensorFlow session
+
+**Side Effects**:
+- Sets `TF_CPP_MIN_LOG_LEVEL=2` environment variable
+- Creates TensorFlow session and loads model weights
+
+**Raises**:
+- `FileNotFoundError`: If checkpoint files are missing
+- `ValueError`: If model configuration is invalid
+
+**Example**:
+```python
+from handwriting_synthesis import Hand
+
+hand = Hand()  # Loads model and restores checkpoint
+```
+
+**Notes**:
+- This operation can take a few seconds on first load
+- Model is loaded once and reused for multiple write() calls
+
+---
 
 ##### `write(self, filename, lines, biases=None, styles=None, stroke_colors=None, stroke_widths=None)`
-Generates handwritten text and saves to SVG file.
-- **Parameters:**
-  - `filename`: Output SVG file path
-  - `lines`: List of text strings to write
-  - `biases`: Optional list of bias values per line (controls randomness)
-  - `styles`: Optional list of style indices per line (0-12 available)
-  - `stroke_colors`: Optional list of colors per line
-  - `stroke_widths`: Optional list of stroke widths per line
-- **Purpose:** Main API for generating handwritten SVG output
-- **Validation:** Ensures lines are ≤75 chars and contain only valid characters
+
+Generates handwritten text and saves to SVG file. This is the main API method for handwriting generation.
+
+**Parameters:**
+- `filename` (str): Output SVG file path (absolute or relative)
+- `lines` (list of str): Text strings to write (one per line)
+- `biases` (list of float, optional): Bias values per line controlling randomness. Default: `None` (uses default bias)
+  - Range: Typically 0.0-1.5
+  - Higher values = more variation/creativity
+- `styles` (list of int, optional): Style indices per line (0-12). Default: `None` (random style)
+- `stroke_colors` (list of str, optional): CSS color names or hex codes per line. Default: `None` (black)
+- `stroke_widths` (list of int, optional): Stroke width in pixels per line. Default: `None` (default width)
+
+**Returns**: None
+
+**Raises**:
+- `ValueError`: If any line exceeds 75 characters
+- `ValueError`: If any line contains unsupported characters
+- `ValueError`: If parameter list lengths don't match `lines` length
+
+**Purpose**: Main API for generating handwritten SVG output with full customization.
+
+**Validation**:
+- Ensures all lines are ≤75 characters
+- Validates characters against supported alphabet
+- Checks parameter list lengths match
+
+**Example**:
+```python
+from handwriting_synthesis import Hand
+
+hand = Hand()
+
+lines = ["Hello, World!", "This is a test."]
+biases = [0.75, 0.5]
+styles = [9, 3]
+stroke_colors = ['blue', 'red']
+stroke_widths = [2, 1]
+
+hand.write(
+    filename='output.svg',
+    lines=lines,
+    biases=biases,
+    styles=styles,
+    stroke_colors=stroke_colors,
+    stroke_widths=stroke_widths
+)
+```
+
+**Processing Steps**:
+1. Validate input parameters
+2. Generate stroke sequences via `_sample()` method
+3. Process strokes (alignment, denoising)
+4. Render to SVG via `_draw()` function
+5. Save to specified filename
+
+---
 
 ##### `_sample(self, lines, biases=None, styles=None)`
-Generates stroke sequences from text input (internal method).
-- **Parameters:**
-  - `lines`: List of text strings
-  - `biases`: Bias values for sampling
-  - `styles`: Style indices for priming
-- **Returns:** List of stroke arrays
-- **Purpose:** Runs RNN inference to generate handwriting strokes
+
+Generates stroke sequences from text input using the RNN model (internal method).
+
+**Parameters:**
+- `lines` (list of str): Text strings to generate
+- `biases` (list of float, optional): Bias values for sampling. Default: `None`
+- `styles` (list of int, optional): Style indices for priming. Default: `None`
+
+**Returns**: `list of numpy.ndarray` - List of stroke arrays, one per line
+  - Each array has shape (N, 3) where columns are [dx, dy, pen_up]
+
+**Purpose**: Runs RNN inference to generate handwriting strokes from text.
+
+**Algorithm**:
+1. Encode text to character indices
+2. Load style embeddings if styles provided
+3. Run RNN in free-running mode (autoregressive generation)
+4. Sample from mixture density network outputs
+5. Continue until end-of-sequence or max length
+
+**Note**: This is an internal method not intended for direct use. Use `write()` instead.
+
+---
 
 ### handwriting_synthesis/hand/_draw.py
 
+**File Location**: `/handwriting_synthesis/hand/_draw.py`
+
 ##### `_draw(strokes, lines, filename, stroke_colors=None, stroke_widths=None)`
-Renders strokes to SVG file (internal function).
-- **Parameters:**
-  - `strokes`: List of stroke arrays
-  - `lines`: Text strings for validation
-  - `filename`: Output SVG path
-  - `stroke_colors`: Colors per line
-  - `stroke_widths`: Widths per line
-- **Purpose:** Creates SVG file with handwriting paths, handles alignment and denoising
+
+Renders stroke sequences to SVG file (internal function).
+
+**Parameters:**
+- `strokes` (list of numpy.ndarray): List of stroke arrays (one per line)
+  - Each array shape: (N, 3) where columns are [dx, dy, pen_up]
+- `lines` (list of str): Text strings for length validation
+- `filename` (str): Output SVG file path
+- `stroke_colors` (list of str, optional): CSS colors per line. Default: `None` (black)
+- `stroke_widths` (list of int, optional): Stroke widths in pixels per line. Default: `None`
+
+**Returns**: None
+
+**Purpose**: Creates SVG file with handwriting paths, handles alignment, denoising, and layout.
+
+**Processing Steps**:
+1. Convert offsets to absolute coordinates
+2. Apply alignment to remove slant
+3. Apply denoising to smooth strokes
+4. Calculate bounding boxes and layout
+5. Generate SVG paths with pen-up handling
+6. Write SVG file with proper viewBox and styling
+
+**SVG Features**:
+- Scalable vector graphics (resolution-independent)
+- Customizable stroke colors and widths
+- Proper handling of pen-up/down states
+- Multi-line layout with spacing
+
+**Note**: This is an internal function not intended for direct use. Use `Hand.write()` instead.
+
+**Example Output**:
+```xml
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="...">
+  <path d="M..." stroke="black" stroke-width="2" fill="none"/>
+  ...
+</svg>
+```
 
 ---
 
@@ -1077,170 +1211,418 @@ Renders strokes to SVG file (internal function).
 
 ### handwriting_synthesis/rnn/RNN.py
 
+**File Location**: `/handwriting_synthesis/rnn/RNN.py`
+
 #### Class: `RNN`
 
-Recurrent Neural Network model for handwriting synthesis (extends BaseModel).
+Recurrent Neural Network model for handwriting synthesis (extends `BaseModel`).
+
+**Purpose**: Implements sequence-to-sequence model using LSTM with attention and mixture density networks for generating handwriting strokes from text.
+
+**Architecture**:
+- 3-layer LSTM with attention mechanism
+- Mixture Density Network (MDN) for stroke prediction
+- Soft attention over input character sequence
+- Style conditioning via learned embeddings
+
+---
+
+#### Methods:
 
 ##### `__init__(self, lstm_size, output_mixture_components, attention_mixture_components, **kwargs)`
+
 Initializes RNN model architecture.
-- **Parameters:**
-  - `lstm_size`: Number of LSTM hidden units
-  - `output_mixture_components`: Number of Gaussian mixture components for stroke prediction
-  - `attention_mixture_components`: Number of mixture components for attention mechanism
-  - `**kwargs`: Additional parameters passed to BaseModel
-- **Purpose:** Configures model hyperparameters and architecture
+
+**Parameters:**
+- `lstm_size` (int): Number of LSTM hidden units per layer
+- `output_mixture_components` (int): Number of Gaussian mixture components for stroke prediction (typically 20)
+- `attention_mixture_components` (int): Number of mixture components for attention mechanism (typically 10)
+- `**kwargs`: Additional parameters passed to `BaseModel` (learning rates, batch sizes, etc.)
+
+**Returns**: None
+
+**Purpose**: Configures model hyperparameters and architecture.
+
+**Default Configuration** (from training):
+```python
+lstm_size = 400
+output_mixture_components = 20
+attention_mixture_components = 10
+```
+
+---
 
 ##### `parse_parameters(self, z, eps=1e-8, sigma_eps=1e-4)`
+
 Parses raw network outputs into mixture density network parameters.
-- **Parameters:**
-  - `z`: Raw network output tensor
-  - `eps`: Small epsilon for numerical stability
-  - `sigma_eps`: Minimum sigma value
-- **Returns:** Tuple of (pis, mus, sigmas, rhos, es) - mixture parameters
-- **Purpose:** Converts network outputs to probabilistic parameters with constraints
+
+**Parameters:**
+- `z` (tf.Tensor): Raw network output tensor of shape (batch, time, features)
+- `eps` (float, optional): Small epsilon for numerical stability. Default: `1e-8`
+- `sigma_eps` (float, optional): Minimum sigma value to prevent collapse. Default: `1e-4`
+
+**Returns**: Tuple of:
+- `pis` (tf.Tensor): Mixture weights (normalized via softmax)
+- `mus` (tf.Tensor): Means of Gaussian components
+- `sigmas` (tf.Tensor): Standard deviations (constrained positive via exp)
+- `rhos` (tf.Tensor): Correlation coefficients (constrained to [-1, 1] via tanh)
+- `es` (tf.Tensor): End-of-stroke probabilities (via sigmoid)
+
+**Purpose**: Converts network outputs to probabilistic parameters with proper constraints.
+
+**Constraints Applied**:
+- Mixture weights: Softmax normalization
+- Means: Unbounded
+- Std deviations: exp() + eps
+- Correlations: tanh() for [-1, 1] range
+- End-of-stroke: sigmoid() for [0, 1] probability
+
+---
 
 ##### `nll(y, lengths, pis, mus, sigmas, rho, es, eps=1e-8)` (static method)
-Calculates negative log-likelihood loss.
-- **Parameters:**
-  - `y`: Target stroke data
-  - `lengths`: Sequence lengths
-  - `pis`, `mus`, `sigmas`, `rho`: Gaussian mixture parameters
-  - `es`: End-of-stroke probabilities
-  - `eps`: Numerical stability constant
-- **Returns:** Tuple of (sequence_loss, element_loss)
-- **Purpose:** Computes loss for mixture density network training
+
+Calculates negative log-likelihood loss for mixture density network.
+
+**Parameters:**
+- `y` (tf.Tensor): Target stroke data, shape (batch, time, 3)
+- `lengths` (tf.Tensor): Sequence lengths, shape (batch,)
+- `pis` (tf.Tensor): Mixture weights
+- `mus` (tf.Tensor): Gaussian means
+- `sigmas` (tf.Tensor): Gaussian standard deviations
+- `rho` (tf.Tensor): Correlation coefficients
+- `es` (tf.Tensor): End-of-stroke probabilities
+- `eps` (float, optional): Numerical stability constant. Default: `1e-8`
+
+**Returns**: Tuple of:
+- `sequence_loss` (tf.Tensor): Average loss per sequence, shape (batch,)
+- `element_loss` (tf.Tensor): Loss per timestep, shape (batch, time)
+
+**Purpose**: Computes loss for mixture density network training using bivariate Gaussian mixtures.
+
+**Loss Formula**: Negative log-likelihood of 2D Gaussian mixture + binary cross-entropy for end-of-stroke.
+
+---
 
 ##### `sample(self, cell)`
+
 Generates handwriting from scratch (unconditional sampling).
-- **Parameters:**
-  - `cell`: LSTM attention cell
-- **Returns:** Sampled stroke sequences
-- **Purpose:** Free-form generation without style priming
+
+**Parameters:**
+- `cell` (`LSTMAttentionCell`): LSTM attention cell for generation
+
+**Returns**: Sampled stroke sequences (generated unconditionally)
+
+**Purpose**: Free-form generation without style priming or text conditioning.
+
+**Note**: Primarily used for testing; production uses `primed_sample()`.
+
+---
 
 ##### `primed_sample(self, cell)`
+
 Generates handwriting with style priming.
-- **Parameters:**
-  - `cell`: LSTM attention cell
-- **Returns:** Sampled stroke sequences
-- **Purpose:** Style-conditioned generation using prime strokes
+
+**Parameters:**
+- `cell` (`LSTMAttentionCell`): LSTM attention cell for generation
+
+**Returns**: Sampled stroke sequences conditioned on style
+
+**Purpose**: Style-conditioned generation using prime strokes to initialize the model.
+
+**Process**:
+1. Load style embedding (prime strokes)
+2. Initialize RNN state with style
+3. Generate strokes autoregressively
+4. Sample from mixture density network at each step
+
+---
 
 ##### `calculate_loss(self)`
+
 Builds computational graph and defines loss function.
-- **Returns:** Loss tensor
-- **Purpose:** Creates TensorFlow graph for training/inference
+
+**Parameters**: None (uses instance attributes)
+
+**Returns**: `tf.Tensor` - Loss tensor for training
+
+**Purpose**: Creates TensorFlow graph for training/inference including:
+- Input placeholders
+- RNN forward pass
+- Mixture density network outputs
+- Loss calculation
+
+---
 
 ### handwriting_synthesis/rnn/LSTMAttentionCell.py
 
+**File Location**: `/handwriting_synthesis/rnn/LSTMAttentionCell.py`
+
+#### Named Tuple: `LSTMAttentionCellState`
+
+State container for the LSTM attention cell.
+
+**Definition**:
+```python
+LSTMAttentionCellState = namedtuple(
+    'LSTMAttentionCellState',
+    ['h1', 'c1', 'h2', 'c2', 'h3', 'c3', 'alpha', 'beta', 'kappa', 'w', 'phi']
+)
+```
+
+**Fields**:
+- `h1`, `c1`: Hidden and cell states for LSTM layer 1
+- `h2`, `c2`: Hidden and cell states for LSTM layer 2
+- `h3`, `c3`: Hidden and cell states for LSTM layer 3
+- `alpha`: Attention mixture weights
+- `beta`: Attention mixture widths
+- `kappa`: Attention mixture centers
+- `w`: Attention window (weighted sum of character embeddings)
+- `phi`: Attention weights over input characters
+
+**Purpose**: Encapsulates the complete state of the 3-layer LSTM with attention mechanism.
+
+---
+
 #### Class: `LSTMAttentionCell`
 
-Custom LSTM cell with soft attention mechanism (extends RNNCell).
+Custom LSTM cell with soft attention mechanism (extends `tf.nn.rnn_cell.RNNCell`).
+
+**Purpose**: Implements 3-layer LSTM with Gaussian mixture attention over input character sequence.
+
+**Architecture**:
+- 3 LSTM layers stacked
+- Soft attention window over input text
+- Mixture density network for output generation
+- Supports style-conditioned generation via bias
+
+---
+
+#### Methods:
 
 ##### `__init__(self, lstm_size, num_attn_mixture_components, attention_values, attention_values_lengths, num_output_mixture_components, bias, reuse=None)`
+
 Initializes attention-based LSTM cell.
-- **Parameters:**
-  - `lstm_size`: Hidden state size
-  - `num_attn_mixture_components`: Number of attention mixture components
-  - `attention_values`: Character sequence to attend to
-  - `attention_values_lengths`: Lengths of character sequences
-  - `num_output_mixture_components`: Output mixture components
-  - `bias`: Sampling bias
-  - `reuse`: Variable reuse flag
-- **Purpose:** Sets up 3-layer LSTM with attention mechanism
+
+**Parameters:**
+- `lstm_size` (int): Hidden state size for each LSTM layer
+- `num_attn_mixture_components` (int): Number of attention mixture components (typically 10)
+- `attention_values` (tf.Tensor): Character sequence to attend to (batch, max_char_len, char_embedding_dim)
+- `attention_values_lengths` (tf.Tensor): Lengths of character sequences (batch,)
+- `num_output_mixture_components` (int): Output mixture components for stroke generation (typically 20)
+- `bias` (float): Sampling bias for temperature control
+- `reuse` (bool, optional): Variable reuse flag for TensorFlow. Default: `None`
+
+**Returns**: None
+
+**Purpose**: Sets up 3-layer LSTM with attention mechanism.
+
+---
 
 ##### `state_size` (property)
+
 Returns the structure and sizes of cell state.
-- **Returns:** LSTMAttentionCellState namedtuple
-- **Purpose:** Defines state structure for TensorFlow
+
+**Parameters**: None (property)
+
+**Returns**: `LSTMAttentionCellState` namedtuple with field sizes
+
+**Purpose**: Defines state structure for TensorFlow RNN infrastructure.
+
+---
 
 ##### `output_size` (property)
+
 Returns the size of cell output.
-- **Returns:** LSTM size integer
-- **Purpose:** Specifies output dimensionality
+
+**Parameters**: None (property)
+
+**Returns**: `int` - LSTM size (hidden state dimension)
+
+**Purpose**: Specifies output dimensionality for TensorFlow.
+
+---
 
 ##### `zero_state(self, batch_size, dtype)`
-Creates initial zero state.
-- **Parameters:**
-  - `batch_size`: Batch size
-  - `dtype`: Data type
-- **Returns:** Zero-initialized state
-- **Purpose:** Provides initial state for sequence generation
+
+Creates initial zero state for the cell.
+
+**Parameters:**
+- `batch_size` (int): Batch size for state initialization
+- `dtype` (tf.DType): Data type for state tensors
+
+**Returns**: `LSTMAttentionCellState` with zero-initialized tensors
+
+**Purpose**: Provides initial state for sequence generation.
+
+---
 
 ##### `__call__(self, inputs, state, scope=None)`
-Performs one step of LSTM with attention.
-- **Parameters:**
-  - `inputs`: Input tensor for current timestep
-  - `state`: Previous cell state
-  - `scope`: Variable scope
-- **Returns:** Tuple of (output, new_state)
-- **Purpose:** Core cell computation with 3 LSTM layers and attention window
+
+Performs one step of LSTM with attention (required by RNNCell interface).
+
+**Parameters:**
+- `inputs` (tf.Tensor): Input tensor for current timestep (batch, input_size)
+- `state` (`LSTMAttentionCellState`): Previous cell state
+- `scope` (str, optional): Variable scope for TensorFlow. Default: `None`
+
+**Returns**: Tuple of:
+- `output` (tf.Tensor): Cell output (hidden state of last LSTM layer)
+- `new_state` (`LSTMAttentionCellState`): Updated cell state
+
+**Purpose**: Core cell computation with 3 LSTM layers and attention window.
+
+**Computation Flow**:
+1. LSTM layer 1: Process input + attention window
+2. LSTM layer 2: Process hidden state from layer 1
+3. LSTM layer 3: Process hidden state from layer 2
+4. Compute attention parameters (alpha, beta, kappa)
+5. Calculate attention window over input characters
+6. Output final hidden state and updated state
+
+---
 
 ##### `output_function(self, state)`
-Samples from mixture density network.
-- **Parameters:**
-  - `state`: Current cell state
-- **Returns:** Sampled stroke point (x, y, end_of_stroke)
-- **Purpose:** Generates output strokes during inference
+
+Samples from mixture density network during generation.
+
+**Parameters:**
+- `state` (`LSTMAttentionCellState`): Current cell state
+
+**Returns**: Sampled stroke point (x, y, end_of_stroke) as tf.Tensor
+
+**Purpose**: Generates output strokes during inference by sampling from the predicted mixture distribution.
+
+**Sampling Process**:
+1. Compute mixture parameters from state
+2. Select mixture component based on weights
+3. Sample (x, y) from selected bivariate Gaussian
+4. Sample end-of-stroke from Bernoulli distribution
+
+---
 
 ##### `termination_condition(self, state)`
+
 Determines when to stop sequence generation.
-- **Parameters:**
-  - `state`: Current cell state
-- **Returns:** Boolean tensor indicating termination
-- **Purpose:** Stops generation when reaching end of text or EOS signal
+
+**Parameters:**
+- `state` (`LSTMAttentionCellState`): Current cell state
+
+**Returns**: `tf.Tensor` (bool) - Boolean tensor indicating termination
+
+**Purpose**: Stops generation when:
+- Attention reaches end of input text (kappa exceeds text length)
+- End-of-stroke signal is strong
+- Maximum sequence length reached
+
+---
 
 ##### `_parse_parameters(self, gmm_params, eps=1e-8, sigma_eps=1e-4)`
+
 Parses GMM parameters with bias adjustment (internal method).
-- **Parameters:**
-  - `gmm_params`: Raw mixture parameters
-  - `eps`, `sigma_eps`: Stability constants
-- **Returns:** Parsed mixture parameters
-- **Purpose:** Applies bias and constraints to parameters
+
+**Parameters:**
+- `gmm_params` (tf.Tensor): Raw mixture parameters
+- `eps` (float, optional): Numerical stability constant. Default: `1e-8`
+- `sigma_eps` (float, optional): Minimum sigma value. Default: `1e-4`
+
+**Returns**: Parsed mixture parameters with applied bias
+
+**Purpose**: Applies bias and constraints to parameters for controlled generation.
+
+**Bias Effect**: Higher bias → more randomness; lower bias → more deterministic.
+
+---
 
 ### handwriting_synthesis/rnn/operations.py
+
+**File Location**: `/handwriting_synthesis/rnn/operations.py`
+
+Custom RNN operations for training and inference.
+
+---
 
 #### Functions:
 
 ##### `_concat(prefix, suffix, static=False)`
+
 Concatenates tensor dimensions (internal helper).
-- **Parameters:**
-  - `prefix`: First dimension
-  - `suffix`: Second dimension
-  - `static`: Whether to use static shapes
-- **Returns:** Concatenated dimension
-- **Purpose:** Helper for shape manipulation
+
+**Parameters:**
+- `prefix`: First dimension value
+- `suffix`: Second dimension value
+- `static` (bool, optional): Whether to use static shapes. Default: `False`
+
+**Returns**: Concatenated dimension
+
+**Purpose**: Helper for shape manipulation in TensorFlow operations.
+
+**Note**: Internal utility function.
+
+---
 
 ##### `raw_rnn(cell, loop_fn, parallel_iterations=None, swap_memory=False, scope=None)`
+
 Custom RNN implementation with arbitrary nested states.
-- **Parameters:**
-  - `cell`: RNN cell
-  - `loop_fn`: Function controlling loop logic
-  - `parallel_iterations`: Parallel execution count
-  - `swap_memory`: Whether to swap GPU/CPU memory
-  - `scope`: Variable scope
-- **Returns:** Tuple of (states, outputs, final_state)
-- **Purpose:** Enhanced RNN that emits full state at each timestep (adapted from TensorFlow)
+
+**Parameters:**
+- `cell` (RNNCell): RNN cell instance
+- `loop_fn` (callable): Function controlling loop logic
+- `parallel_iterations` (int, optional): Parallel execution count. Default: `None`
+- `swap_memory` (bool, optional): Whether to swap GPU/CPU memory. Default: `False`
+- `scope` (str, optional): Variable scope. Default: `None`
+
+**Returns**: Tuple of:
+- `states` (list): Cell states at each timestep
+- `outputs` (list): Cell outputs at each timestep
+- `final_state`: Final cell state
+
+**Purpose**: Enhanced RNN that emits full state at each timestep (adapted from TensorFlow).
+
+**Use Case**: Needed for custom attention mechanisms where full state history is required.
+
+---
 
 ##### `rnn_teacher_force(inputs, cell, sequence_length, initial_state, scope='dynamic-rnn-teacher-force')`
+
 Teacher-forced RNN execution for training.
-- **Parameters:**
-  - `inputs`: Input sequences
-  - `cell`: RNN cell
-  - `sequence_length`: Lengths of sequences
-  - `initial_state`: Initial cell state
-  - `scope`: Variable scope
-- **Returns:** Tuple of (states, outputs, final_state)
-- **Purpose:** Trains RNN using ground truth inputs at each step
+
+**Parameters:**
+- `inputs` (tf.Tensor): Input sequences (batch, time, features)
+- `cell` (RNNCell): RNN cell instance
+- `sequence_length` (tf.Tensor): Lengths of sequences (batch,)
+- `initial_state`: Initial cell state
+- `scope` (str, optional): Variable scope. Default: `'dynamic-rnn-teacher-force'`
+
+**Returns**: Tuple of:
+- `states`: Cell states at each timestep
+- `outputs`: Cell outputs at each timestep
+- `final_state`: Final cell state
+
+**Purpose**: Trains RNN using ground truth inputs at each step.
+
+**Teacher Forcing**: At timestep t, use ground truth input[t] (not predicted output[t-1]).
+
+---
 
 ##### `rnn_free_run(cell, initial_state, sequence_length, initial_input=None, scope='dynamic-rnn-free-run')`
+
 Free-running RNN for generation/inference.
-- **Parameters:**
-  - `cell`: RNN cell
-  - `initial_state`: Initial cell state
-  - `sequence_length`: Maximum sequence length
-  - `initial_input`: Optional first input
-  - `scope`: Variable scope
-- **Returns:** Tuple of (states, outputs, final_state)
-- **Purpose:** Generates sequences by feeding outputs back as inputs
+
+**Parameters:**
+- `cell` (RNNCell): RNN cell instance
+- `initial_state`: Initial cell state
+- `sequence_length` (int or tf.Tensor): Maximum sequence length to generate
+- `initial_input` (tf.Tensor, optional): Optional first input. Default: `None` (uses cell's output_function)
+- `scope` (str, optional): Variable scope. Default: `'dynamic-rnn-free-run'`
+
+**Returns**: Tuple of:
+- `states`: Cell states at each timestep
+- `outputs`: Cell outputs at each timestep
+- `final_state`: Final cell state
+
+**Purpose**: Generates sequences by feeding outputs back as inputs (autoregressive).
+
+**Autoregressive**: At timestep t, use predicted output[t-1] as input[t].
 
 ---
 
