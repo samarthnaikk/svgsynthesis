@@ -1,19 +1,326 @@
-# Handwriting Synthesis - Function Documentation
+# Handwriting Synthesis - Comprehensive Documentation
 
-This document provides comprehensive documentation for all functions in the handwriting synthesis codebase.
+This document provides complete documentation for all functions, classes, modules, and APIs in the handwriting synthesis codebase.
 
 ---
 
 ## Table of Contents
 
-1. [Main Module](#main-module)
-2. [Configuration](#configuration)
-3. [Data Frame Module](#data-frame-module)
-4. [Drawing Module](#drawing-module)
-5. [Hand Module](#hand-module)
-6. [RNN Module](#rnn-module)
-7. [TensorFlow Utilities](#tensorflow-utilities)
-8. [Training Module](#training-module)
+1. [Overview](#overview)
+2. [System Architecture](#system-architecture)
+3. [Installation & Setup](#installation--setup)
+4. [Configuration & Environment](#configuration--environment)
+5. [Usage Examples](#usage-examples)
+6. [Main Module](#main-module)
+7. [Data Frame Module](#data-frame-module)
+8. [Drawing Module](#drawing-module)
+9. [Hand Module](#hand-module)
+10. [RNN Module](#rnn-module)
+11. [TensorFlow Utilities](#tensorflow-utilities)
+12. [Training Module](#training-module)
+13. [Troubleshooting](#troubleshooting)
+
+---
+
+## Overview
+
+The Handwriting Synthesis project is a **macOS-compatible implementation** of handwriting generation using Recurrent Neural Networks (RNNs) with attention mechanisms. This system implements the research from Alex Graves' paper ["Generating Sequences with Recurrent Neural Networks"](https://arxiv.org/abs/1308.0850).
+
+### Key Features
+
+* **Handwriting Generation**: Converts text strings into realistic handwritten SVG images
+* **Style Control**: Supports 13 different handwriting styles (0-12)
+* **Bias Adjustment**: Control randomness/creativity in generation
+* **Customization**: Configurable stroke colors and widths
+* **Pre-trained Model**: Includes trained weights for immediate use
+* **macOS Optimized**: Works seamlessly on Intel and Apple Silicon Macs
+
+### Project Purpose
+
+This system enables:
+- Generating realistic handwritten text programmatically
+- Creating personalized handwriting styles
+- Data augmentation for handwriting recognition systems
+- Artistic and creative applications
+
+---
+
+## System Architecture
+
+### High-Level Architecture
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                      User Application                        │
+│                     (main.py, custom)                        │
+└────────────────────┬────────────────────────────────────────┘
+                     │
+                     v
+┌─────────────────────────────────────────────────────────────┐
+│                   Hand Interface (API)                       │
+│              handwriting_synthesis.Hand                      │
+│         - write() method (main entry point)                  │
+└────────────┬────────────────────────────────────────────────┘
+             │
+             v
+┌─────────────────────────────────────────────────────────────┐
+│                  RNN Generation Engine                       │
+│   - LSTMAttentionCell: 3-layer LSTM with attention          │
+│   - Mixture Density Network: Stroke prediction              │
+│   - Style Priming: Condition on handwriting styles          │
+└────────────┬────────────────────────────────────────────────┘
+             │
+             v
+┌─────────────────────────────────────────────────────────────┐
+│              Stroke Processing Pipeline                      │
+│   - Alignment, denoising, interpolation                     │
+│   - Coordinate transformations                              │
+│   - SVG rendering                                           │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### Component Overview
+
+1. **Hand Module**: High-level API for text-to-handwriting conversion
+2. **RNN Module**: Neural network architecture for sequence generation
+3. **Drawing Module**: Stroke manipulation and SVG rendering utilities
+4. **Training Module**: Data loading and model training infrastructure
+5. **TensorFlow Utilities**: Custom layers and helpers for model construction
+6. **Data Frame Module**: Lightweight data container for batch processing
+
+### Data Flow
+
+```
+Text Input → Encoding → RNN with Attention → Stroke Sequences → 
+Processing (align, denoise) → SVG Rendering → Output File
+```
+
+---
+
+## Installation & Setup
+
+### System Requirements
+
+* **Operating System**: macOS 11+ (Big Sur or later)
+* **Python**: 3.8, 3.9, or 3.10
+* **Hardware**: 
+  - Intel or Apple Silicon processor
+  - Minimum 4GB RAM (8GB recommended for training)
+  - 500MB disk space for model and dependencies
+
+### Dependencies
+
+The project requires the following Python packages:
+
+| Package | Version | Purpose |
+|---------|---------|---------|
+| `tensorflow` | 2.15.0 | Neural network framework |
+| `tensorflow-probability` | 0.20.1 | Mixture density networks |
+| `matplotlib` | ≥2.1.0 | Visualization and plotting |
+| `pandas` | ≥0.22.0 | Data manipulation |
+| `scikit-learn` | ≥0.19.1 | Train/test splitting |
+| `scipy` | ≥1.0.0 | Signal processing (interpolation, filtering) |
+| `svgwrite` | ≥1.1.12 | SVG file generation |
+| `numpy` | (via dependencies) | Numerical computations |
+
+### Installation Steps
+
+1. **Clone the repository**:
+   ```bash
+   git clone https://github.com/samarthnaikk/svgsynthesis.git
+   cd svgsynthesis
+   ```
+
+2. **Create virtual environment** (recommended):
+   ```bash
+   python3 -m venv venv
+   source venv/bin/activate
+   ```
+
+3. **Install dependencies**:
+   ```bash
+   pip install --upgrade pip
+   pip install -r requirements.txt
+   ```
+
+4. **Verify installation**:
+   ```bash
+   python main.py
+   ```
+
+This should generate several SVG files in the `img/` directory.
+
+### Pre-trained Model
+
+The repository includes a pre-trained model located in the `model/` directory:
+- **Checkpoint**: `model/checkpoint/`
+- **Style embeddings**: `model/style/`
+
+No additional downloads are required for basic usage.
+
+---
+
+## Configuration & Environment
+
+### Configuration File
+
+**Location**: `handwriting_synthesis/config.py`
+
+This module defines all global paths used throughout the project.
+
+**Configuration Variables**:
+
+| Variable | Default Value | Description |
+|----------|---------------|-------------|
+| `BASE_PATH` | `"model"` | Root directory for model files |
+| `BASE_DATA_PATH` | `"data"` | Root directory for datasets |
+| `data_path` | `"model/data"` | Combined model data path |
+| `processed_data_path` | `"model/data/processed"` | Preprocessed training data |
+| `raw_data_path` | `"model/data/raw"` | Original IAM dataset |
+| `ascii_data_path` | `"model/data/raw/ascii"` | Text transcriptions |
+| `checkpoint_path` | `"model/checkpoint"` | Saved model weights |
+| `prediction_path` | `"model/prediction"` | Model prediction outputs |
+| `style_path` | `"model/style"` | Style embedding vectors |
+
+**Customization**: To change paths, modify the variables in `config.py` before importing any modules.
+
+### Environment Variables
+
+The project uses one environment variable internally:
+
+| Variable | Value | Purpose | Set By |
+|----------|-------|---------|--------|
+| `TF_CPP_MIN_LOG_LEVEL` | `2` | Suppresses TensorFlow info/warning logs | `Hand.__init__()` |
+
+**Note**: This is set automatically and does not require user configuration.
+
+### Required Files
+
+For basic usage (generation only):
+- `model/checkpoint/`: Pre-trained model checkpoint
+- `model/style/`: Style embedding files
+
+For training from scratch:
+- `model/data/raw/`: IAM On-Line Handwriting Database
+- `model/data/raw/ascii/`: Corresponding text transcriptions
+
+---
+
+## Usage Examples
+
+### Basic Usage
+
+Generate handwritten text with default settings:
+
+```python
+from handwriting_synthesis import Hand
+
+hand = Hand()
+hand.write(
+    filename='output.svg',
+    lines=['Hello, World!']
+)
+```
+
+### Custom Styling
+
+Use specific handwriting styles and biases:
+
+```python
+from handwriting_synthesis import Hand
+
+hand = Hand()
+
+lines = [
+    "The quick brown fox",
+    "jumps over the lazy dog"
+]
+
+# Style 9, moderate randomness
+biases = [0.75, 0.75]
+styles = [9, 9]
+
+hand.write(
+    filename='styled_output.svg',
+    lines=lines,
+    biases=biases,
+    styles=styles
+)
+```
+
+### Multiple Styles with Colors
+
+Create multi-line output with different colors per line:
+
+```python
+from handwriting_synthesis import Hand
+
+hand = Hand()
+
+lines = [
+    "Line one in red",
+    "Line two in blue",
+    "Line three in green",
+    "Line four in black"
+]
+
+biases = [0.5, 0.75, 1.0, 0.5]
+styles = [0, 3, 7, 12]
+stroke_colors = ['red', 'blue', 'green', 'black']
+stroke_widths = [1, 2, 1, 3]
+
+hand.write(
+    filename='colorful_output.svg',
+    lines=lines,
+    biases=biases,
+    styles=styles,
+    stroke_colors=stroke_colors,
+    stroke_widths=stroke_widths
+)
+```
+
+### Understanding Parameters
+
+**Biases**: Controls randomness (0.0 to 1.5 typical range)
+- Lower values (0.1-0.5): More consistent, less creative
+- Medium values (0.5-0.8): Balanced
+- Higher values (0.8-1.5): More variation, creative
+
+**Styles**: Select handwriting style (integers 0-12)
+- Each style represents a different handwriting personality
+- Styles are learned from the training data
+- Experiment to find preferred styles
+
+**Character Limits**:
+- Maximum line length: **75 characters**
+- Lines exceeding this will raise a `ValueError`
+
+**Supported Characters**:
+```
+Space, !, ", #, ', (, ), ,, -, ., 0-9, :, ;, ?,
+A-Z (except Q, X, Z), a-z
+```
+
+### Drawing Strokes Directly
+
+For custom visualization of stroke data:
+
+```python
+from handwriting_synthesis.drawing.operations import draw
+import numpy as np
+
+# offsets: numpy array of shape (N, 3) where columns are [dx, dy, pen_up]
+offsets = np.load('my_strokes.npy')
+
+draw(
+    offsets=offsets,
+    ascii_seq='Custom text',
+    align_strokes=True,
+    denoise_strokes=True,
+    interpolation_factor=2,
+    save_file='visualization.png'
+)
+```
 
 ---
 
@@ -21,29 +328,48 @@ This document provides comprehensive documentation for all functions in the hand
 
 ### main.py
 
-This is the entry point for the handwriting synthesis system with demo examples.
+**File Location**: `/main.py`
 
-**Main Script Execution:**
-- Demonstrates various handwriting generation scenarios with different biases and styles
-- Creates SVG outputs with synthesized handwriting
-- Shows examples: usage demo, song lyrics (All Star, Downtown, Never Gonna Give You Up)
+The main entry point script demonstrating handwriting synthesis capabilities through multiple examples.
 
----
+**Purpose**: Provides runnable demonstrations of the handwriting synthesis system with various configurations.
 
-## Configuration
+**Script Execution**:
 
-### config.py
+When run directly (`python main.py`), generates four SVG examples:
 
-Defines global configuration paths for the project.
+1. **Usage Demo** (`img/usage_demo.svg`)
+   - Multi-line text with varying colors and stroke widths
+   - Demonstrates all customization options
+   - Style: 9, Bias: 0.75 for all lines
 
-**Path Variables:**
-- `data_path`: Path to model data directory
-- `processed_data_path`: Path to processed data
-- `raw_data_path`: Path to raw data
-- `ascii_data_path`: Path to ASCII data
-- `checkpoint_path`: Path to model checkpoints
-- `prediction_path`: Path to model predictions
-- `style_path`: Path to style embeddings
+2. **All Star Lyrics** (`img/all_star.svg`)
+   - Fixed style (12) and bias (0.75)
+   - Demonstrates consistent handwriting across multiple lines
+
+3. **Downtown Lyrics** (`img/downtown.svg`)
+   - Fixed bias (0.75), varying styles
+   - Shows style changes between paragraphs
+
+4. **Never Gonna Give You Up** (`img/give_up.svg`)
+   - Varying bias (decreasing), fixed style (7)
+   - Demonstrates bias effects on handwriting consistency
+
+**Usage**:
+```bash
+python main.py
+```
+
+**Output**: Creates SVG files in the `img/` directory (created automatically if missing).
+
+**Dependencies**:
+- `numpy`: Array operations
+- `handwriting_synthesis.Hand`: Main handwriting generation class
+
+**Notes**:
+- Requires pre-trained model in `model/checkpoint/`
+- All examples use text within character limits (≤75 chars per line)
+- Demonstrates best practices for parameter selection
 
 ---
 
@@ -51,94 +377,306 @@ Defines global configuration paths for the project.
 
 ### handwriting_synthesis/data_frame/DataFrame.py
 
+**File Location**: `/handwriting_synthesis/data_frame/DataFrame.py`
+
 #### Class: `DataFrame`
 
-A minimal pandas DataFrame analog for handling n-dimensional numpy matrices with support for shuffling, batching, and train/test splitting.
+A minimal pandas DataFrame analog designed for handling n-dimensional numpy matrices with support for shuffling, batching, and train/test splitting.
 
-**Methods:**
+**Purpose**: Provides efficient data container optimized for machine learning batch processing with multiple synchronized arrays.
+
+**Design Philosophy**: 
+- Lightweight alternative to pandas for ML workflows
+- All data arrays must share the same first dimension (sample axis)
+- Maintains synchronization across all columns during operations
+
+---
+
+#### Methods:
 
 ##### `__init__(self, columns, data)`
+
 Initializes the DataFrame with column names and data matrices.
-- **Parameters:**
-  - `columns`: List of column names corresponding to data matrices
-  - `data`: List of n-dimensional numpy arrays (all must have same first dimension)
-- **Purpose:** Creates a data container optimized for batch processing
+
+**Parameters:**
+- `columns` (list of str): Column names corresponding to data matrices
+- `data` (list of numpy.ndarray): N-dimensional arrays (all must have same first dimension)
+
+**Returns**: None
+
+**Raises**: 
+- `AssertionError`: If number of columns doesn't match number of data arrays
+- `AssertionError`: If first dimensions of data arrays don't match
+
+**Purpose**: Creates a data container optimized for batch processing in neural network training.
+
+**Example**:
+```python
+from handwriting_synthesis.data_frame import DataFrame
+import numpy as np
+
+X = np.random.rand(100, 10)  # 100 samples, 10 features
+y = np.random.randint(0, 2, 100)  # 100 labels
+
+df = DataFrame(columns=['features', 'labels'], data=[X, y])
+```
+
+---
 
 ##### `shapes(self)`
+
 Returns a pandas Series showing the shape of each data matrix.
-- **Returns:** Series mapping column names to matrix shapes
-- **Purpose:** Quick inspection of data dimensions
+
+**Parameters**: None
+
+**Returns**: `pandas.Series` mapping column names to matrix shapes
+
+**Purpose**: Quick inspection of data dimensions for debugging and validation.
+
+**Example**:
+```python
+print(df.shapes())
+# features    (100, 10)
+# labels      (100,)
+```
+
+---
 
 ##### `dtypes(self)`
+
 Returns a pandas Series showing the data type of each matrix.
-- **Returns:** Series mapping column names to numpy dtypes
-- **Purpose:** Inspect data types for all columns
+
+**Parameters**: None
+
+**Returns**: `pandas.Series` mapping column names to numpy dtypes
+
+**Purpose**: Inspect data types for all columns to ensure compatibility.
+
+**Example**:
+```python
+print(df.dtypes())
+# features    float64
+# labels      int64
+```
+
+---
 
 ##### `shuffle(self)`
+
 Randomly shuffles the order of samples in the DataFrame.
-- **Purpose:** Randomizes data order for training
+
+**Parameters**: None
+
+**Returns**: None (in-place operation)
+
+**Purpose**: Randomizes data order for training to prevent learning artifacts from data ordering.
+
+**Example**:
+```python
+df.shuffle()  # All columns shuffled with same permutation
+```
+
+---
 
 ##### `train_test_split(self, train_size, random_state=np.random.randint(1000), stratify=None)`
+
 Splits DataFrame into training and testing sets.
-- **Parameters:**
-  - `train_size`: Fraction or number of samples for training
-  - `random_state`: Random seed for reproducibility
-  - `stratify`: Array for stratified splitting
-- **Returns:** Tuple of (train_df, test_df)
-- **Purpose:** Creates train/test splits while maintaining data structure
+
+**Parameters:**
+- `train_size` (float or int): 
+  - If float (0.0-1.0): Fraction of samples for training
+  - If int: Absolute number of samples for training
+- `random_state` (int, optional): Random seed for reproducibility. Default: random integer
+- `stratify` (array-like, optional): Array for stratified splitting (ensures balanced classes)
+
+**Returns**: Tuple of `(train_df, test_df)` - Two DataFrame objects
+
+**Purpose**: Creates train/test splits while maintaining data structure and synchronization.
+
+**Example**:
+```python
+train_df, test_df = df.train_test_split(train_size=0.8, random_state=42)
+print(len(train_df), len(test_df))  # 80, 20
+```
+
+---
 
 ##### `batch_generator(self, batch_size, shuffle=True, num_epochs=10000, allow_smaller_final_batch=False)`
+
 Generates batches of data for training.
-- **Parameters:**
-  - `batch_size`: Number of samples per batch
-  - `shuffle`: Whether to shuffle data each epoch
-  - `num_epochs`: Maximum number of epochs to generate
-  - `allow_smaller_final_batch`: Whether to yield partial final batches
-- **Yields:** DataFrame objects containing batch data
-- **Purpose:** Provides efficient batch iteration for model training
+
+**Parameters:**
+- `batch_size` (int): Number of samples per batch
+- `shuffle` (bool, optional): Whether to shuffle data each epoch. Default: `True`
+- `num_epochs` (int, optional): Maximum number of epochs to generate. Default: `10000`
+- `allow_smaller_final_batch` (bool, optional): Whether to yield partial final batches. Default: `False`
+
+**Yields**: `DataFrame` objects containing batch data
+
+**Purpose**: Provides efficient batch iteration for model training with automatic epoch management.
+
+**Example**:
+```python
+for batch in df.batch_generator(batch_size=32, num_epochs=10):
+    X_batch = batch['features']
+    y_batch = batch['labels']
+    # Train model on batch
+```
+
+---
 
 ##### `iterrows(self)`
+
 Iterates over rows (samples) in the DataFrame.
-- **Yields:** pandas Series for each sample
-- **Purpose:** Row-by-row iteration
+
+**Parameters**: None
+
+**Yields**: `pandas.Series` for each sample with column names as index
+
+**Purpose**: Row-by-row iteration for processing individual samples.
+
+**Example**:
+```python
+for row in df.iterrows():
+    features = row['features']
+    label = row['labels']
+    # Process individual sample
+```
+
+---
 
 ##### `mask(self, mask)`
+
 Filters DataFrame using a boolean mask.
-- **Parameters:**
-  - `mask`: Boolean array for filtering
-- **Returns:** New DataFrame with filtered data
-- **Purpose:** Subset selection based on conditions
+
+**Parameters:**
+- `mask` (numpy.ndarray of bool): Boolean array for filtering (same length as DataFrame)
+
+**Returns**: New `DataFrame` with filtered data
+
+**Purpose**: Subset selection based on conditions without modifying original.
+
+**Example**:
+```python
+# Select positive samples
+positive_df = df.mask(df['labels'] == 1)
+```
+
+---
 
 ##### `concat(self, other_df)`
+
 Concatenates another DataFrame along the sample axis.
-- **Parameters:**
-  - `other_df`: DataFrame to concatenate
-- **Returns:** New concatenated DataFrame
-- **Purpose:** Combines multiple DataFrames
+
+**Parameters:**
+- `other_df` (DataFrame): DataFrame to concatenate (must have same columns)
+
+**Returns**: New concatenated `DataFrame`
+
+**Purpose**: Combines multiple DataFrames vertically (stacking samples).
+
+**Example**:
+```python
+combined_df = train_df.concat(val_df)
+```
+
+---
 
 ##### `items(self)`
+
 Returns an iterator over (column_name, data) pairs.
-- **Returns:** Dictionary items iterator
-- **Purpose:** Iterate over columns and their data
+
+**Parameters**: None
+
+**Returns**: Dictionary items iterator
+
+**Purpose**: Iterate over columns and their data arrays.
+
+**Example**:
+```python
+for col_name, col_data in df.items():
+    print(f"{col_name}: {col_data.shape}")
+```
+
+---
+
+##### `__iter__(self)`
+
+Makes DataFrame iterable over (column_name, data) pairs.
+
+**Parameters**: None
+
+**Returns**: Iterator over dictionary items
+
+**Purpose**: Allows using DataFrame in for-loops directly.
+
+**Example**:
+```python
+for col_name, col_data in df:
+    print(f"{col_name}: {col_data.shape}")
+```
+
+---
 
 ##### `__len__(self)`
+
 Returns the number of samples in the DataFrame.
-- **Returns:** Integer sample count
-- **Purpose:** Get DataFrame size
+
+**Parameters**: None
+
+**Returns**: `int` - Sample count
+
+**Purpose**: Get DataFrame size using `len()` function.
+
+**Example**:
+```python
+num_samples = len(df)  # 100
+```
+
+---
 
 ##### `__getitem__(self, key)`
+
 Accesses data by column name or row index.
-- **Parameters:**
-  - `key`: Column name (str) or row index (int)
-- **Returns:** Data array or pandas Series
-- **Purpose:** Data access interface
+
+**Parameters:**
+- `key` (str or int): 
+  - If `str`: Column name - returns entire data array
+  - If `int`: Row index - returns pandas Series for that sample
+
+**Returns**: 
+- `numpy.ndarray` if key is column name
+- `pandas.Series` if key is row index
+
+**Purpose**: Provides dictionary-like and list-like data access interface.
+
+**Example**:
+```python
+# Access column
+features = df['features']  # Returns full array
+
+# Access row
+sample = df[0]  # Returns Series with all columns for first sample
+```
+
+---
 
 ##### `__setitem__(self, key, value)`
+
 Sets data for a column.
-- **Parameters:**
-  - `key`: Column name
-  - `value`: Data array to set
-- **Purpose:** Add or update columns
+
+**Parameters:**
+- `key` (str): Column name
+- `value` (numpy.ndarray): Data array to set (first dimension must match DataFrame length)
+
+**Returns**: None
+
+**Purpose**: Add or update columns with dictionary-like syntax.
+
+**Example**:
+```python
+df['predictions'] = model.predict(df['features'])
+```
 
 ---
 
@@ -146,102 +684,345 @@ Sets data for a column.
 
 ### handwriting_synthesis/drawing/operations.py
 
-Contains utility functions for stroke processing, manipulation, and visualization.
+**File Location**: `/handwriting_synthesis/drawing/operations.py`
 
-**Global Variables:**
-- `alphabet`: List of supported characters for handwriting synthesis
-- `alpha_to_num`: Dictionary mapping characters to indices
-- `num_to_alpha`: Dictionary mapping indices to ASCII codes
-- `MAX_STROKE_LEN`: Maximum stroke length (1200)
-- `MAX_CHAR_LEN`: Maximum character sequence length (75)
+Contains utility functions for stroke processing, manipulation, visualization, and encoding/decoding operations.
+
+---
+
+#### Module-Level Constants
+
+##### Character Encoding Constants
+
+**`alphabet`** (list of str)  
+Complete set of supported characters for handwriting synthesis:
+```python
+['\x00', ' ', '!', '"', '#', "'", '(', ')', ',', '-', '.',
+ '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', ':', ';',
+ '?', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K',
+ 'L', 'M', 'N', 'O', 'P', 'R', 'S', 'T', 'U', 'V', 'W', 'Y',
+ 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l',
+ 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x',
+ 'y', 'z']
+```
+**Purpose**: Defines valid input characters (Note: Missing Q, X, Z in uppercase)
+
+**`alphabet_ord`** (list of int)  
+ASCII codes for all characters in `alphabet`.
+```python
+alphabet_ord = list(map(ord, alphabet))
+```
+**Purpose**: Integer representation of valid characters for encoding operations.
+
+**`alpha_to_num`** (defaultdict)  
+Dictionary mapping characters to their indices in the alphabet.
+```python
+alpha_to_num = defaultdict(int, list(map(reversed, enumerate(alphabet))))
+```
+**Purpose**: Fast lookup for encoding characters to indices. Returns 0 (null character) for unsupported characters.
+
+**`num_to_alpha`** (dict)  
+Dictionary mapping indices to ASCII codes.
+```python
+num_to_alpha = dict(enumerate(alphabet_ord))
+```
+**Purpose**: Decoding indices back to character codes.
+
+##### Length Constraints
+
+**`MAX_STROKE_LEN`** (int) = `1200`  
+Maximum number of stroke points in a sequence.
+**Purpose**: Upper bound for stroke sequence length to prevent memory issues.
+
+**`MAX_CHAR_LEN`** (int) = `75`  
+Maximum number of characters in a text line.
+**Purpose**: Enforced limit on input text length for generation.
+
+---
 
 #### Functions:
 
 ##### `align(coords)`
-Corrects for global slant and offset in handwriting strokes.
-- **Parameters:**
-  - `coords`: Numpy array of stroke coordinates
-- **Returns:** Aligned coordinates
-- **Purpose:** Normalizes handwriting by removing slant using linear regression
+
+Corrects for global slant and offset in handwriting strokes using linear regression.
+
+**Parameters:**
+- `coords` (numpy.ndarray): Stroke coordinates of shape (N, 2) where columns are [x, y]
+
+**Returns**: `numpy.ndarray` - Aligned coordinates with same shape
+
+**Purpose**: Normalizes handwriting by removing slant. Uses linear regression to find the dominant writing angle and rotates strokes to be vertical.
+
+**Algorithm**:
+1. Compute linear regression slope from coordinates
+2. Calculate rotation angle from slope
+3. Apply rotation transformation to remove slant
+
+**Example**:
+```python
+from handwriting_synthesis.drawing.operations import align
+import numpy as np
+
+slanted_coords = np.array([[0, 0], [1, 1], [2, 2]])
+straight_coords = align(slanted_coords)
+```
+
+---
 
 ##### `skew(coords, degrees)`
-Skews strokes by a specified angle.
-- **Parameters:**
-  - `coords`: Stroke coordinates
-  - `degrees`: Angle in degrees to skew
-- **Returns:** Skewed coordinates
-- **Purpose:** Applies horizontal shear transformation
+
+Skews strokes by a specified angle using horizontal shear transformation.
+
+**Parameters:**
+- `coords` (numpy.ndarray): Stroke coordinates of shape (N, 2)
+- `degrees` (float): Angle in degrees to skew (positive = right lean)
+
+**Returns**: `numpy.ndarray` - Skewed coordinates with same shape
+
+**Purpose**: Applies horizontal shear transformation to create italic or slanted handwriting effect.
+
+**Transform Matrix**:
+```
+| 1   tan(θ) |
+| 0      1   |
+```
+
+**Example**:
+```python
+from handwriting_synthesis.drawing.operations import skew
+
+# Create 15-degree right slant
+italic_coords = skew(coords, 15)
+```
+
+---
 
 ##### `stretch(coords, x_factor, y_factor)`
+
 Stretches strokes along x and y axes.
-- **Parameters:**
-  - `coords`: Stroke coordinates
-  - `x_factor`: Horizontal scaling factor
-  - `y_factor`: Vertical scaling factor
-- **Returns:** Stretched coordinates
-- **Purpose:** Scales handwriting dimensions
+
+**Parameters:**
+- `coords` (numpy.ndarray): Stroke coordinates of shape (N, 2)
+- `x_factor` (float): Horizontal scaling factor (1.0 = no change)
+- `y_factor` (float): Vertical scaling factor (1.0 = no change)
+
+**Returns**: `numpy.ndarray` - Stretched coordinates with same shape
+
+**Purpose**: Scales handwriting dimensions independently along each axis.
+
+**Example**:
+```python
+from handwriting_synthesis.drawing.operations import stretch
+
+# Make handwriting wider and shorter
+stretched_coords = stretch(coords, x_factor=1.5, y_factor=0.8)
+```
+
+---
 
 ##### `add_noise(coords, scale)`
-Adds Gaussian noise to strokes.
-- **Parameters:**
-  - `coords`: Stroke coordinates
-  - `scale`: Standard deviation of noise
-- **Returns:** Noisy coordinates
-- **Purpose:** Data augmentation for training robustness
+
+Adds Gaussian noise to strokes for data augmentation.
+
+**Parameters:**
+- `coords` (numpy.ndarray): Stroke coordinates of shape (N, 2)
+- `scale` (float): Standard deviation of noise distribution
+
+**Returns**: `numpy.ndarray` - Noisy coordinates with same shape
+
+**Purpose**: Data augmentation for training robustness by adding random perturbations.
+
+**Noise Model**: Gaussian with mean=0, std=scale, applied independently to x and y.
+
+**Example**:
+```python
+from handwriting_synthesis.drawing.operations import add_noise
+
+# Add small random perturbations
+noisy_coords = add_noise(coords, scale=0.1)
+```
+
+---
 
 ##### `encode_ascii(ascii_string)`
+
 Encodes ASCII string to array of integer indices.
-- **Parameters:**
-  - `ascii_string`: Text string to encode
-- **Returns:** Numpy array of character indices
-- **Purpose:** Converts text to numerical representation for model input
+
+**Parameters:**
+- `ascii_string` (str): Text string to encode
+
+**Returns**: `numpy.ndarray` - Integer array of character indices (dtype: int32)
+
+**Purpose**: Converts text to numerical representation for model input. Unsupported characters map to index 0 (null).
+
+**Example**:
+```python
+from handwriting_synthesis.drawing.operations import encode_ascii
+
+text = "Hello, World!"
+encoded = encode_ascii(text)
+# Returns array of indices corresponding to each character
+```
+
+---
 
 ##### `denoise(coords)`
+
 Applies Savitzky-Golay filter to smooth strokes.
-- **Parameters:**
-  - `coords`: Stroke coordinates
-- **Returns:** Smoothed coordinates
-- **Purpose:** Reduces noise artifacts from data collection
+
+**Parameters:**
+- `coords` (numpy.ndarray): Stroke coordinates of shape (N, 2)
+
+**Returns**: `numpy.ndarray` - Smoothed coordinates with same shape
+
+**Purpose**: Reduces noise artifacts from data collection using polynomial smoothing filter.
+
+**Filter Parameters**:
+- Window length: 15 points
+- Polynomial order: 3
+
+**Note**: Uses `scipy.signal.savgol_filter`
+
+**Example**:
+```python
+from handwriting_synthesis.drawing.operations import denoise
+
+smoothed_coords = denoise(noisy_coords)
+```
+
+---
 
 ##### `interpolate(coords, factor=2)`
-Interpolates strokes using cubic spline.
-- **Parameters:**
-  - `coords`: Stroke coordinates
-  - `factor`: Interpolation factor (higher = more points)
-- **Returns:** Interpolated coordinates
-- **Purpose:** Increases stroke resolution for smoother rendering
+
+Interpolates strokes using cubic spline for higher resolution.
+
+**Parameters:**
+- `coords` (numpy.ndarray): Stroke coordinates of shape (N, 2)
+- `factor` (int, optional): Interpolation factor. Default: 2
+  - factor=2: Doubles the number of points
+  - factor=N: Multiplies points by N
+
+**Returns**: `numpy.ndarray` - Interpolated coordinates of shape (N*factor, 2)
+
+**Purpose**: Increases stroke resolution for smoother rendering and more detailed representation.
+
+**Method**: Cubic spline interpolation using `scipy.interpolate.interp1d`
+
+**Example**:
+```python
+from handwriting_synthesis.drawing.operations import interpolate
+
+# Double the resolution
+high_res_coords = interpolate(coords, factor=2)
+```
+
+---
 
 ##### `normalize(offsets)`
+
 Normalizes strokes to median unit norm.
-- **Parameters:**
-  - `offsets`: Stroke offset vectors
-- **Returns:** Normalized offsets
-- **Purpose:** Standardizes stroke magnitudes for consistent scaling
+
+**Parameters:**
+- `offsets` (numpy.ndarray): Stroke offset vectors of shape (N, 2)
+
+**Returns**: `numpy.ndarray` - Normalized offsets with same shape
+
+**Purpose**: Standardizes stroke magnitudes for consistent scaling across different handwriting samples.
+
+**Algorithm**:
+1. Compute norm of each offset vector
+2. Calculate median norm across all vectors
+3. Scale all offsets by (1 / median_norm)
+
+**Example**:
+```python
+from handwriting_synthesis.drawing.operations import normalize
+
+normalized_offsets = normalize(raw_offsets)
+```
+
+---
 
 ##### `coords_to_offsets(coords)`
-Converts coordinates to offset representation.
-- **Parameters:**
-  - `coords`: Absolute coordinates
-- **Returns:** Relative offset vectors
-- **Purpose:** Transforms from absolute to relative positions (model-friendly)
+
+Converts absolute coordinates to relative offset representation.
+
+**Parameters:**
+- `coords` (numpy.ndarray): Absolute coordinates of shape (N, 2)
+
+**Returns**: `numpy.ndarray` - Relative offset vectors of shape (N, 2)
+
+**Purpose**: Transforms from absolute to relative positions. This representation is more suitable for sequence models as it encodes local motion patterns.
+
+**Transform**: `offsets[i] = coords[i] - coords[i-1]` (first offset is zero)
+
+**Example**:
+```python
+from handwriting_synthesis.drawing.operations import coords_to_offsets
+
+offsets = coords_to_offsets(absolute_coords)
+```
+
+---
 
 ##### `offsets_to_coords(offsets)`
-Converts offsets back to coordinates.
-- **Parameters:**
-  - `offsets`: Relative offset vectors
-- **Returns:** Absolute coordinates
-- **Purpose:** Reconstructs absolute positions from relative offsets
+
+Converts relative offsets back to absolute coordinates.
+
+**Parameters:**
+- `offsets` (numpy.ndarray): Relative offset vectors of shape (N, 2 or 3)
+
+**Returns**: `numpy.ndarray` - Absolute coordinates of shape (N, 2)
+
+**Purpose**: Reconstructs absolute positions from relative offsets (inverse of `coords_to_offsets`).
+
+**Transform**: `coords[i] = sum(offsets[0:i+1])`
+
+**Note**: If offsets have 3 columns, only first 2 (dx, dy) are used; third column (pen up/down) is ignored.
+
+**Example**:
+```python
+from handwriting_synthesis.drawing.operations import offsets_to_coords
+
+absolute_coords = offsets_to_coords(offset_vectors)
+```
+
+---
 
 ##### `draw(offsets, ascii_seq=None, align_strokes=True, denoise_strokes=True, interpolation_factor=None, save_file=None)`
+
 Visualizes handwriting strokes using matplotlib.
-- **Parameters:**
-  - `offsets`: Stroke offsets to draw
-  - `ascii_seq`: Optional text to display as title
-  - `align_strokes`: Whether to align strokes
-  - `denoise_strokes`: Whether to denoise
-  - `interpolation_factor`: Interpolation factor (None = no interpolation)
-  - `save_file`: Path to save figure (None = display)
-- **Purpose:** Creates matplotlib visualization of handwriting
+
+**Parameters:**
+- `offsets` (numpy.ndarray): Stroke offsets to draw, shape (N, 2 or 3)
+- `ascii_seq` (str, optional): Text to display as title. Default: `None`
+- `align_strokes` (bool, optional): Whether to align strokes. Default: `True`
+- `denoise_strokes` (bool, optional): Whether to denoise strokes. Default: `True`
+- `interpolation_factor` (int, optional): Interpolation factor (None = no interpolation). Default: `None`
+- `save_file` (str, optional): Path to save figure (None = display interactively). Default: `None`
+
+**Returns**: None
+
+**Purpose**: Creates matplotlib visualization of handwriting with optional preprocessing and saving.
+
+**Behavior**:
+- Converts offsets to coordinates
+- Applies alignment and denoising if requested
+- Optionally interpolates for smoother appearance
+- Handles pen-up strokes (draws disconnected segments)
+- Saves to file or displays interactively
+
+**Example**:
+```python
+from handwriting_synthesis.drawing.operations import draw
+
+# Display interactively
+draw(strokes, ascii_seq="Hello World", interpolation_factor=2)
+
+# Save to file
+draw(strokes, ascii_seq="Hello World", save_file="output.png", 
+     align_strokes=True, denoise_strokes=True)
+```
 
 ---
 
